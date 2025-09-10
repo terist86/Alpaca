@@ -612,3 +612,38 @@ class GenericOpenAI(BaseInstance):
     def __init__(self, instance_id:str, properties:dict):
         self.instance_url = properties.get('url', '')
         super().__init__(instance_id, properties)
+
+class HuggingFaceOpenAI(BaseInstance):
+    instance_type = 'hf-openai'
+    instance_type_display = 'Hugging Face OpenAI'
+    instance_url = 'https://router.huggingface.co/v1'
+    description = _('Hugging Face’s Inference Providers')
+
+    def get_available_models(self) -> list:
+        try:
+            if not self.available_models or len(self.available_models) == 0:
+                self.available_models = {}
+                response = requests.get(
+                    'https://router.huggingface.co/v1/models',
+                    headers={
+                        'Authorization': f'Bearer {self.properties.get("api")}'
+                    }
+                )
+                for model in response.json().get('data', []):
+                    providers = [provider for provider in model.get('providers', []) if provider.get('status') == 'live' and not provider.get('pricing')]
+                    if model.get('id') and providers:
+                        for provider in providers:
+                            self.available_models['{}:{}'.format(model.get('id'), provider.get('provider'))] = {'display_name': '{} [{}]'.format(model.get('id'), provider.get('provider'))}
+
+            return self.available_models
+        except Exception as e:
+            dialog.simple_error(
+                parent = self.row.get_root() if self.row else None,
+                title = _('Instance Error'),
+                body = _('Could not retrieve models'),
+                error_log = e
+            )
+            logger.error(e)
+            if self.row:
+                self.row.get_parent().unselect_all()
+            return []
